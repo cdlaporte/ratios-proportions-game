@@ -933,7 +933,7 @@
       case 'shrine': return 'Pray at the Angle Shrine';
       case 'sign': return 'Read the bridge sign';
       case 'goblin': return 'Talk to the Ratio Goblin';
-      case 'shopItem': return o.heal ? `Buy a heart (${o.price} gold)` : `Buy ${o.item.name} (${o.price} gold)`;
+      case 'shopItem': return o.heal ? `Buy a heart (${o.price} gold): heals 1 heart` : `Buy ${o.item.name} (${o.price} gold): ${o.item.desc}`;
       case 'hatch': return 'Climb down to the next floor';
       case 'rune': return 'Break the shield rune!';
       case 'flagSlime': return 'Adopt the slime (it surrendered!)';
@@ -2067,6 +2067,13 @@
           ctx.fillStyle = G.run.gold >= o.price ? '#ffd966' : '#ff8a8a';
           ctx.font = 'bold 15px system-ui';
           ctx.fillText(`${o.price}g`, 0, 40);
+          // name + what it does, so students can decide what to buy
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 14px system-ui, sans-serif';
+          ctx.fillText(o.heal ? 'Heart' : o.item.name, 0, 60);
+          ctx.fillStyle = '#c9d2e6';
+          ctx.font = '12px system-ui, sans-serif';
+          wrapText(o.heal ? 'Heals 1 heart' : o.item.desc, 136).forEach((line, i) => ctx.fillText(line, 0, 76 + i * 15));
         }
         break;
       }
@@ -2141,6 +2148,17 @@
       }
     }
     ctx.restore();
+  }
+
+  function wrapText(text, maxW) {
+    const lines = [];
+    let line = '';
+    for (const w of text.split(' ')) {
+      const test = line ? line + ' ' + w : w;
+      if (line && ctx.measureText(test).width > maxW) { lines.push(line); line = w; } else line = test;
+    }
+    if (line) lines.push(line);
+    return lines;
   }
 
   function drawPickup(k) {
