@@ -107,6 +107,7 @@
   .end-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 16px; }
   .end-table td, .end-table th { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; }
   .end-table td:last-child, .end-table th:last-child { text-align: right; }
+  .end-extras { text-align: center; margin-top: 10px; font-size: 18px; }
   .end-code { text-align: center; margin-top: 12px; font-size: 16px; color: var(--muted); }
   .end-code b { color: var(--text); letter-spacing: 1px; }
   @media (max-width: 600px) { .end-grid { grid-template-columns: repeat(2, 1fr); } }
@@ -176,6 +177,9 @@
     <p id="set-locked" class="note hidden">⚠ These settings were loaded from a class link.</p>
     <p class="note">Choose which problem types appear. Harder proportion types unlock on later floors (x + 3 on Floor 2, x on both sides on Floor 3).</p>
     <div id="set-types"></div>
+    <label class="namebox" style="margin-top:12px">Your name, as students know it (it shows up somewhere secret 😉)
+      <input id="set-teacher" maxlength="40" autocomplete="off" placeholder="e.g. Ms. Rivera">
+    </label>
     <label class="chk"><input type="checkbox" id="set-freq"> Extra practice: more math chests drop after fights</label>
     <label class="chk"><input type="checkbox" id="set-sound"> Sound effects</label>
     <p class="note" style="margin-top:14px">Share this link with students so their games use these settings:</p>

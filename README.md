@@ -26,6 +26,18 @@ power-ups. The math is the key to the good loot:
   report code like `F3-S14-A16-P11-JJ8` (floor reached, solved, attempted, perfect).
   Students can screenshot it or type it into a Google Form.
 
+## Surprises (no math, just fun)
+
+* **Mimic chests.** About 1 in 8 chests sprouts legs and runs away screaming. Catch it for
+  double loot.
+* **The slime that surrenders.** Sometimes the last little slime in a room waves a white flag.
+  Don't shoot it! Walk up and adopt it, and it becomes a pet that follows you and helps fight.
+* **Hat collection.** Every boss drops a hat, and the hats stack on your head.
+* **Funny defeat messages,** like "Defeated by a bat. A BAT."
+* **A secret room** hidden behind a cracked wall (shoot it to open it). If you set your name in
+  Teacher Settings, it shows up there.
+* **Endless mode has a surprise boss on Floor 4.** It gives pop quizzes instead of using shields.
+
 ## Controls
 
 | Key | Action |
@@ -58,8 +70,10 @@ in `js/game.js`.
 Once unlocked, you can:
 * turn individual problem types on or off,
 * turn on **Extra practice** (more math chests drop after fights),
-* copy a **class link** that has those settings built in. For example, this link gives
-  only cross-product problems:
+* enter **your name, as students know it**, for the secret room and the Floor 4 boss,
+* copy a **class link** that has those settings built in. Copy it again after changing
+  anything, since students' games only get your settings and name through the link.
+  For example, this link gives only cross-product problems:
   `.../index.html?types=simple,word,oneSide,twoSides&freq=high`
 
 Problem type keys: `simple`, `word`, `oneSide`, `twoSides`, `angles2`, `triAngles`,

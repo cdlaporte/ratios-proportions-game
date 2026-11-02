@@ -23,6 +23,33 @@
     { name: 'The Ember Vault',      floor: '#3a2929', floor2: '#412e2d', wall: '#1b1010', wallTop: '#6a4038', rock: '#77544a', accent: '#ffb36b' },
   ];
 
+  // ---- just-for-fun extras ----
+  const MIMIC_CHANCE = 0.125; // about 1 in 8 locked chests is secretly a mimic
+  const PET_NAMES = ['Gerald', 'Sir Wobbles', 'Kevin', 'Princess Goo', 'Bloop', 'Dave', 'Lord Jiggles', 'Nugget', 'Pudding', 'Steve'];
+  const HATS = [
+    { name: "King Gloop's Crown", emoji: '👑', h: 12 },
+    { name: "The Bone Warden's Helmet", emoji: '🦴', h: 11 },
+    { name: "The Golem's Hard Hat", emoji: '⛑️', h: 11 },
+    { name: "The Substitute's Graduation Cap", emoji: '🎓', h: 11 },
+  ];
+  const DEFEAT_LINES = {
+    bat: ['Defeated by a bat. A BAT.', 'The bat would like everyone to know it did this on purpose.'],
+    slime: ['Absorbed by a slime. It says you were delicious.', 'Defeated by the weakest monster in the dungeon. Bold strategy.'],
+    bigslime: ['Flattened by a big slime. Ratio of slime to you: 1:0.'],
+    archer: ['Cause of defeat: walked into an arrow. Probably more than once.', 'The skeleton archer has been practicing. You have not been dodging.'],
+    charger: ['Run over by a charging boar. It did not even slow down.', 'The boar saw you, and the boar chose violence.'],
+    eye: ['Stared down by a giant eyeball. You blinked first.'],
+    ghost: ['Spooked to defeat. The ghost is laughing. Silently. Because it is a ghost.'],
+    boss: ['{boss} says: "Better luck next time!"', '{boss} wins this round. Rematch?'],
+    generic: [
+      'Your hearts-to-enemies ratio was 0:{n}. In simplest form: 0:1. Ouch.',
+      'You were outnumbered {n}:1. That ratio is already in simplest form, unfortunately.',
+      'The slimes would like to thank you for your generous donation of gold.',
+      'The dungeon: 1. You: 0. Simplified: still 1:0.',
+      'Defeated! But your math skills? Undefeated.',
+    ],
+  };
+
   // Which problem types each game object asks for
   const CROSS = ['simple', 'word', 'oneSide', 'twoSides'];
   const SHRINE = ['angles2', 'triAngles'];
@@ -40,7 +67,7 @@
 
   // ================= settings =================
   const SKEY = 'ratioRogue.settings.v1';
-  const settings = { types: {}, sound: true, freq: 'normal', name: '' };
+  const settings = { types: {}, sound: true, freq: 'normal', name: '', teacherName: '' };
   Object.keys(P.TYPES).forEach((k) => (settings.types[k] = true));
   try {
     const saved = JSON.parse(localStorage.getItem(SKEY) || 'null');
@@ -54,6 +81,8 @@
     Object.keys(settings.types).forEach((k) => (settings.types[k] = on.includes(k)));
   }
   if (urlParams.has('freq')) settings.freq = urlParams.get('freq') === 'high' ? 'high' : 'normal';
+  if (urlParams.has('teacher')) settings.teacherName = urlParams.get('teacher').slice(0, 40);
+  const teacherDisplay = () => (settings.teacherName || '').trim() || 'your teacher';
   function saveSettings() {
     try { localStorage.setItem(SKEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
   }
@@ -90,6 +119,10 @@
     shield: () => tone(90, 0.6, 'sawtooth', 0.07, 200),
     boom: () => { tone(80, 0.6, 'sawtooth', 0.09, 30); tone(140, 0.4, 'square', 0.05, 40, 0.05); },
     buy: () => { tone(700, 0.08, 'square', 0.04); tone(1050, 0.12, 'square', 0.04, null, 0.08); },
+    scream: () => { tone(500, 0.25, 'square', 0.05, 1500); tone(1400, 0.2, 'square', 0.04, 600, 0.22); },
+    squeak: () => { tone(900, 0.07, 'sine', 0.05, 1300); tone(1300, 0.08, 'sine', 0.04, 900, 0.08); },
+    sad: () => { tone(440, 0.18, 'triangle', 0.05, 330); tone(330, 0.3, 'triangle', 0.05, 220, 0.18); },
+    crack: () => tone(120, 0.12, 'square', 0.06, 60),
   };
 
   // ================= canvas & input =================
@@ -198,7 +231,7 @@
     G.run = {
       floor: 1, player: newPlayer(), gold: 0, items: [], name: settings.name || '',
       stats: { attempted: 0, solved: 0, perfect: 0, hints: 0, byType: {} }, start: Date.now(),
-      kills: 0, endless: false,
+      kills: 0, endless: false, hats: [], loungeMade: false,
     };
     G.texts = []; G.particles = []; G.deathT = 0; G.shake = 0;
     newFloor(1);
@@ -258,11 +291,50 @@
       r.cleared = true;
     }
     for (const r of rooms.values()) buildRoom(r);
+    if (!run.loungeMade && Math.random() < (floor >= 3 ? 0.6 : 0.4)) addLounge(rooms);
     run.rooms = rooms;
     run.boss = boss;
     run.player.x = RW / 2; run.player.y = RH / 2 + 60;
     G.banner = { text: `Floor ${floor}`, sub: run.theme.name, t: 3 };
     enterRoom(start);
+  }
+
+  const gapTiles = (d) => (d === 'n' ? DC.map((c) => [c, 0]) : d === 's' ? DC.map((c) => [c, ROWS - 1])
+    : d === 'w' ? DR.map((r) => [0, r]) : DR.map((r) => [COLS - 1, r]));
+
+  // The Teachers' Lounge: a secret room behind a cracked wall in a fight room
+  function addLounge(rooms) {
+    const k = (x, y) => x + ',' + y;
+    const hosts = [...rooms.values()].filter((r) => r.type === 'combat').sort(() => Math.random() - 0.5);
+    for (const h of hosts) {
+      for (const d of Object.keys(DIRS).sort(() => Math.random() - 0.5)) {
+        const nx = h.gx + DIRS[d][0], ny = h.gy + DIRS[d][1];
+        if (rooms.has(k(nx, ny)) || h.doors[d]) continue;
+        const L = { gx: nx, gy: ny, type: 'lounge', doors: { [OPP[d]]: h }, objects: [], pickups: [], cleared: true, visited: false, seen: false };
+        rooms.set(k(nx, ny), L);
+        buildRoom(L);
+        // the host's door gap stays solid wall (with cracks) until it's shot open
+        h.doors[d] = L; h.secretDir = d; h.secretHits = 0; h.secretOpen = false;
+        G.run.loungeMade = true;
+        return;
+      }
+    }
+  }
+  const isSecretShut = (room, d) => room.secretDir === d && !room.secretOpen;
+  function hitSecretWall(room, x, y) {
+    room.secretHits++;
+    sfx.crack();
+    G.shake = Math.max(G.shake, 3);
+    burst(x, y, '#9a8f80', 8, 160);
+    if (room.secretHits >= 3) {
+      room.secretOpen = true;
+      gapTiles(room.secretDir).forEach(([c, r]) => (room.tiles[r][c] = FLOOR));
+      room.doors[room.secretDir].seen = true;
+      G.bg = renderRoomBG(room);
+      sfx.door();
+      burst(x, y, '#c9b89a', 30, 260);
+      G.banner = { text: 'A secret passage!', sub: 'Wait… is that coffee?', t: 2.6, small: true };
+    }
   }
 
   function buildRoom(room) {
@@ -303,9 +375,14 @@
       room.objects.push({ kind: 'sign', x: 4.5 * T, y: 6.5 * T, r: 20 });
       room.objects.push({ kind: 'chest', golden: true, unlocked: true, x: cx, y: cy, r: 22 });
     }
-    if (room.type === 'treasure') room.objects.push({ kind: 'chest', golden: true, x: cx, y: cy, r: 22 });
+    if (room.type === 'treasure') room.objects.push({ kind: 'chest', golden: true, x: cx, y: cy, r: 22, mimic: Math.random() < MIMIC_CHANCE });
     if (room.type === 'shrine') room.objects.push({ kind: 'shrine', x: cx, y: cy - 10, r: 26 });
     if (room.type === 'goblin') room.objects.push({ kind: 'goblin', x: cx, y: cy - 10, r: 18 });
+    if (room.type === 'lounge') {
+      room.objects.push({ kind: 'statue', x: cx, y: 3 * T, r: 24 });
+      room.objects.push({ kind: 'coffee', x: 3.5 * T, y: 3.5 * T, r: 20 });
+      room.objects.push({ kind: 'papers', x: RW - 3.5 * T, y: 3.5 * T, r: 18 });
+    }
     if (room.type === 'shop') {
       const wares = rollItemsForShop();
       wares.forEach((w, i) => room.objects.push({ kind: 'shopItem', item: w.item, price: w.price, heal: w.heal, x: cx + (i - 1) * 150, y: cy, r: 20 }));
@@ -329,7 +406,7 @@
     run.cur = room;
     room.visited = true;
     room.seen = true;
-    Object.values(room.doors).forEach((n) => (n.seen = true));
+    Object.entries(room.doors).forEach(([d, n]) => { if (!isSecretShut(room, d)) n.seen = true; });
     G.enemies = []; G.pbullets = []; G.ebullets = []; G.particles = [];
     G.locked = false;
     G.fade = 0.25;
@@ -341,6 +418,7 @@
       if (fromDir === 'e') { p.x = RW - T * 1.5; p.y = RH / 2; }
     }
     if (p.bubble) p.bubbleReady = true;
+    if (p.pet) { p.pet.x = p.x - 30; p.pet.y = p.y + 10; }
     if (!room.cleared && room.type === 'combat') {
       const f = run.floor;
       const n = Math.min(8, 4 + Math.floor((f - 1) * 0.5) + irand(0, 1));
@@ -398,7 +476,7 @@
     if (room.type === 'combat') {
       const chestChance = settings.freq === 'high' ? 0.7 : 0.4;
       if (Math.random() < chestChance) {
-        room.objects.push({ kind: 'chest', x: RW / 2, y: RH / 2, r: 20, pop: 0.4 });
+        room.objects.push({ kind: 'chest', x: RW / 2, y: RH / 2, r: 20, pop: 0.4, mimic: Math.random() < MIMIC_CHANCE });
         floatText(RW / 2, RH / 2 - 40, 'A locked chest appeared!', '#ffd966', 2);
       } else {
         for (let i = 0; i < irand(1, 3); i++) dropPickup(RW / 2 + rand(-30, 30), RH / 2 + rand(-30, 30), 'coin');
@@ -459,13 +537,15 @@
     { name: 'King Gloop', title: 'Ruler of the Cellar', color: '#55d16a', r: 40, hp: 70 },
     { name: 'The Bone Warden', title: 'Keeper of the Catacombs', color: '#e9e2cc', r: 34, hp: 95 },
     { name: 'The Proportion Golem', title: 'Guardian of the Ember Vault', color: '#d0894a', r: 42, hp: 125 },
+    { name: 'The Substitute', title: 'Here to take attendance', color: '#8fa3c7', r: 30, hp: 150 },
   ];
   function makeBoss(floor) {
-    const v = (floor - 1) % 3;
+    const v = floor % 4 === 0 ? 3 : (floor - 1) % 3; // every 4th floor: the secret Substitute boss
     const d = BOSSES[v];
     const loop = Math.floor((floor - 1) / 3);
     const hp = d.hp * (1 + 0.6 * loop);
-    G.banner = { text: d.name, sub: d.title, t: 2.8, boss: true };
+    const sub = v === 3 && settings.teacherName ? `Filling in for ${teacherDisplay()} today` : d.title;
+    G.banner = { text: d.name, sub, t: 2.8, boss: true };
     return {
       kind: 'boss', variant: v, name: d.name, color: d.color, r: d.r, x: RW / 2, y: RH / 2 - 90,
       hp, maxHp: hp, t: 0, cd: 2, cd2: 4, flash: 0, slow: 0, spawn: 1.2, kx: 0, ky: 0,
@@ -609,6 +689,28 @@
         if (minions < 5) for (let i = 0; i < 3; i++) G.enemies.push(Object.assign(makeEnemy('bat', b.x + rand(-50, 50), b.y + rand(-50, 50)), { spawn: 0.3 }));
         b.cd2 = 7;
       }
+    } else if (b.variant === 3) {
+      // The Substitute: paces at the front of the room, throws paper airplanes
+      const s = Math.sin(b.t * 0.9);
+      moveEnt(b, s * 130 * dt, (RH * 0.3 - b.y) * 0.8 * dt + uy * 20 * dt, 'walk');
+      if (b.cd <= 0) {
+        const a = Math.atan2(uy, ux), n = enraged ? 5 : 3;
+        for (let i = 0; i < n; i++) {
+          const aa = a + (i - (n - 1) / 2) * 0.25;
+          fireEnemy(b.x, b.y, Math.cos(aa), Math.sin(aa), 230 * loopBoost, { color: '#f4f4f4', r: 7, paper: true });
+        }
+        b.cd = enraged ? 1.1 : 1.5;
+      }
+      if (b.cd2 <= 0) {
+        floatText(b.x, b.y - b.r - 24, 'TAKE YOUR SEATS!', '#ffe27a', 1.6);
+        ring(b.x, b.y, enraged ? 16 : 12, 180 * loopBoost, b.t, { color: '#f4f4f4', r: 7, paper: true });
+        b.cd2 = 5.5;
+      }
+      b.talk = (b.talk || 3) - dt;
+      if (b.talk <= 0) {
+        floatText(b.x, b.y - b.r - 44, pick(['Is this the right room?', 'Who threw that?!', `${teacherDisplay()} left me a lesson plan...`, "I'll be writing names down.", 'Phones away, please.', 'Is there a seating chart?']), '#ffffff', 2.2);
+        b.talk = 4.5;
+      }
     } else {
       // Proportion Golem: stomps, charges, and spins bullet spirals
       if (b.state === 'walk') {
@@ -657,8 +759,14 @@
     if (e.kind !== 'boss') { e.kx = ux * 260; e.ky = uy * 260; }
     if (G.run.player.frost) e.slow = 1.6;
     if (e.kind === 'boss' && e.shieldIdx < e.thresholds.length && e.hp <= e.maxHp * e.thresholds[e.shieldIdx]) {
-      e.hp = e.maxHp * e.thresholds[e.shieldIdx];
-      raiseShield(e);
+      if (e.variant === 3) {
+        // The Substitute doesn't use shields. It gives pop quizzes.
+        e.shieldIdx++;
+        G.pendingQuiz = e;
+      } else {
+        e.hp = e.maxHp * e.thresholds[e.shieldIdx];
+        raiseShield(e);
+      }
     }
     if (e.hp <= 0) killEnemy(e);
   }
@@ -694,8 +802,9 @@
       G.room.objects = G.room.objects.filter((o) => o.kind !== 'rune');
       G.room.objects.push({ kind: 'chest', golden: true, unlocked: true, boss: true, x: RW / 2 - 70, y: RH / 2, r: 22, pop: 0.5 });
       G.room.objects.push({ kind: 'hatch', x: RW / 2 + 80, y: RH / 2, r: 26 });
+      G.room.objects.push({ kind: 'hat', hat: e.variant, x: RW / 2, y: RH / 2 + 90, r: 16, pop: 0.6 });
       for (let i = 0; i < 6; i++) dropPickup(RW / 2 + rand(-40, 40), RH / 2 + rand(30, 60), 'coin');
-      G.banner = { text: 'Boss defeated!', sub: 'Grab the treasure, then take the hatch down', t: 3 };
+      G.banner = { text: 'Boss defeated!', sub: 'Grab the treasure (and your new hat!), then take the hatch down', t: 3 };
       return;
     }
     const luck = p.luck;
@@ -746,6 +855,7 @@
     }
     if (p.hp <= 0) {
       p.hp = 0;
+      G.lastHit = src || '';
       G.deathT = 1.3;
       burst(p.x, p.y, '#7fe0d0', 40, 260);
     }
@@ -811,7 +921,7 @@
     const p = G.run.player;
     let best = null, bd = 1e9;
     for (const o of G.room.objects) {
-      if (o.used || o.kind === 'shopkeeper') continue;
+      if (o.used || o.fleeing || o.kind === 'shopkeeper' || o.kind === 'hat') continue;
       const d = dist(p, o) - o.r - p.r;
       if (d < 26 && d < bd) { best = o; bd = d; }
     }
@@ -826,6 +936,10 @@
       case 'shopItem': return o.heal ? `Buy a heart (${o.price} gold)` : `Buy ${o.item.name} (${o.price} gold)`;
       case 'hatch': return 'Climb down to the next floor';
       case 'rune': return 'Break the shield rune!';
+      case 'flagSlime': return 'Adopt the slime (it surrendered!)';
+      case 'statue': return 'Read the statue plaque';
+      case 'coffee': return "Drink the teacher's coffee";
+      case 'papers': return 'Look at the stack of papers';
       default: return 'Interact';
     }
   }
@@ -833,6 +947,20 @@
   function interact(o) {
     const run = G.run, p = run.player;
     if (o.kind === 'chest') {
+      if (o.mimic && !o.caught) return wakeMimic(o);
+      if (o.mimic) {
+        return openProblem(o, CROSS, {
+          icon: '🙀', title: 'Panicking Mimic',
+          reward: '"OKAY OKAY! Here\'s your problem, just don\'t hurt me!" Mimics carry <b>double loot</b>: you get <b>TWO</b> item picks',
+          onSolve: (perfect) => {
+            o.used = true; o.open = true;
+            run.gold += irand(4, 8);
+            burst(o.x, o.y, '#ffd966', 40, 260);
+            const n = perfect ? 3 : 2;
+            showItemPick(rollItems(n), 'Mimic loot! First pick:', () => showItemPick(rollItems(n), 'Mimic loot! Second pick:'));
+          },
+        });
+      }
       if (o.unlocked) {
         o.used = true; o.open = true;
         const n = o.boss ? 3 : 2;
@@ -904,6 +1032,34 @@
       sfx.buy();
       if (o.heal) { p.hp = Math.min(p.maxHp, p.hp + 1); floatText(p.x, p.y - 30, '+1 ♥', '#ff6b8a'); }
       else giveItem(o.item);
+      return;
+    }
+    if (o.kind === 'flagSlime') {
+      G.room.objects = G.room.objects.filter((x) => x !== o);
+      if (p.pet) { floatText(o.x, o.y - 30, `It waves goodbye and wanders off to find ${p.pet.name}'s cousin.`, '#cfe', 2.5); return; }
+      p.pet = { name: o.name, x: o.x, y: o.y, cd: 1, t: 0, hop: 0 };
+      sfx.item();
+      burst(o.x, o.y, '#62d462', 24, 200);
+      G.banner = { text: `${o.name} joined your party!`, sub: 'Your new pet slime will help you fight.', t: 2.6, small: true };
+      return;
+    }
+    if (o.kind === 'statue') {
+      sfx.heart();
+      G.banner = { text: `In honor of ${teacherDisplay()}`, sub: 'who has never once forgotten to simplify.', t: 4, small: true };
+      return;
+    }
+    if (o.kind === 'coffee') {
+      o.used = true;
+      p.speed *= 1.06; p.fireDelay *= 0.9;
+      sfx.item();
+      floatText(p.x, p.y - 50, "You drank the teacher's coffee.", '#ffe27a', 2.6);
+      floatText(p.x, p.y - 30, 'You feel powerful... and guilty.', '#ffffff', 2.8);
+      return;
+    }
+    if (o.kind === 'papers') {
+      o.used = true;
+      floatText(p.x, p.y - 50, 'A stack of ungraded quizzes.', '#ffffff', 2.6);
+      floatText(p.x, p.y - 30, 'One has your name on it. You decide not to look.', '#ffe27a', 3);
       return;
     }
     if (o.kind === 'hatch') {
@@ -1127,9 +1283,11 @@
 
   // ================= item pick =================
   let pickChoices = [];
-  function showItemPick(items, title) {
-    if (!items.length) return;
+  let pickThen = null;
+  function showItemPick(items, title, then) {
+    if (!items.length) { if (then) then(); return; }
     pickChoices = items;
+    pickThen = then || null;
     G.mode = 'pick';
     clearInput();
     $('pick-title').textContent = title;
@@ -1152,6 +1310,7 @@
     clearInput();
     blurUI();
     giveItem(it);
+    if (pickThen) { const f = pickThen; pickThen = null; setTimeout(f, 300); }
   }
   function pickKey(e) {
     if (/^[1-3]$/.test(e.key)) choosePick(Number(e.key) - 1);
@@ -1178,6 +1337,7 @@
     const roomBefore = G.room;
     updatePlayer(dt);
     if (G.room !== roomBefore) return;
+    updatePet(dt);
 
     // interact
     G.hint = nearestObject();
@@ -1228,6 +1388,10 @@
       b.x += b.vx * dt; b.y += b.vy * dt;
       b.life -= dt;
       if (pointSolid(b.x, b.y, 'shot')) {
+        const rm = G.room, tc = Math.floor(b.x / T), tr = Math.floor(b.y / T);
+        if (rm.secretDir && !rm.secretOpen && gapTiles(rm.secretDir).some(([c, r]) => c === tc && r === tr)) {
+          b.dead = true; hitSecretWall(rm, ox, oy); continue;
+        }
         if (b.bounces > 0) {
           b.bounces--;
           if (pointSolid(b.x, oy, 'shot')) b.vx = -b.vx;
@@ -1244,6 +1408,11 @@
           spark(b.x, b.y, b.color);
           b.hit.add(e);
           if (!b.pierce) { b.dead = true; break; }
+        }
+      }
+      if (!b.dead && !b.pet) {
+        for (const o of G.room.objects) {
+          if (o.kind === 'flagSlime' && Math.hypot(o.x - b.x, o.y - b.y) < o.r + b.r) { b.dead = true; flagSlimeHit(o); break; }
         }
       }
     }
@@ -1272,6 +1441,13 @@
     G.ebullets = G.ebullets.filter((b) => !b.dead);
     G.enemies = G.enemies.filter((e) => !e.dead);
 
+    // sometimes the last little slime in a room gives up
+    if (G.locked && G.enemies.length === 1 && !G.room.surrenderChecked) {
+      G.room.surrenderChecked = true;
+      const e = G.enemies[0];
+      if (e.kind === 'slime' && !run.player.pet && Math.random() < 0.5) surrenderSlime(e);
+    }
+
     if (G.locked && G.enemies.length === 0) roomCleared();
 
     // pickups
@@ -1295,8 +1471,117 @@
       }
     }
     room.pickups = room.pickups.filter((k) => !k.dead);
-    for (const o of room.objects) if (o.pop > 0) o.pop -= dt;
+    for (const o of room.objects) {
+      if (o.pop > 0) o.pop -= dt;
+      if (o.talkT > 0) o.talkT -= dt;
+      if (o.fleeing) updateMimic(o, dt);
+      if (o.kind === 'hat' && !o.used && dist(o, p) < o.r + p.r + 4) {
+        o.used = true;
+        run.hats.push(o.hat);
+        sfx.item();
+        burst(o.x, o.y, '#ffe27a', 24, 200);
+        floatText(p.x, p.y - 56, HATS[o.hat].name + '!', '#ffe27a', 2.4);
+        floatText(p.x, p.y - 34, '(Purely cosmetic. Extremely important.)', '#dddddd', 2.6);
+      }
+    }
+    room.objects = room.objects.filter((o) => !(o.kind === 'hat' && o.used));
+    if (G.pendingQuiz && G.mode === 'play') { const b = G.pendingQuiz; G.pendingQuiz = null; if (!b.dead) popQuiz(b); }
     updateParticles(dt);
+  }
+
+  // ---------- mimics ----------
+  function wakeMimic(o) {
+    o.fleeing = true; o.t = 0; o.yell = 1.2; o.pop = 0.3;
+    sfx.scream();
+    G.shake = 5;
+    floatText(o.x, o.y - 40, 'AAAAH!', '#ff8a8a', 1.6);
+    floatText(o.x, o.y - 62, 'It was a MIMIC! Catch it!', '#ffe27a', 2.2);
+  }
+  function updateMimic(o, dt) {
+    const p = G.run.player;
+    o.t += dt;
+    const d = dist(o, p) || 1;
+    if (d < p.r + o.r + 6) {
+      o.fleeing = false; o.caught = true;
+      floatText(o.x, o.y - 40, 'OKAY OKAY! YOU WIN!', '#ffe27a', 1.6);
+      return interact(o);
+    }
+    const ux = (o.x - p.x) / d, uy = (o.y - p.y) / d;
+    const w = Math.sin(o.t * 7) * 0.5;
+    const sp = d < 280 ? 180 : 70;
+    const e = { x: o.x, y: o.y, r: o.r };
+    if (moveEnt(e, (ux - uy * w) * sp * dt, (uy + ux * w) * sp * dt, 'walk')) {
+      o.side = o.side || (Math.random() < 0.5 ? 1 : -1);
+      moveEnt(e, -uy * o.side * sp * dt, ux * o.side * sp * dt, 'walk');
+    }
+    o.x = clamp(e.x, T + o.r, RW - T - o.r);
+    o.y = clamp(e.y, T + o.r, RH - T - o.r);
+    if (Math.random() < 0.3) puff(o.x, o.y + o.r * 0.7, '#8a6a4a');
+    o.yell -= dt;
+    if (o.yell <= 0) {
+      floatText(o.x, o.y - 40, pick(['AAAAH!', 'NOPE NOPE NOPE', 'Leave me alone!', "I'm just a regular chest!", 'Not the math!', 'Help!']), '#ff8a8a', 1.2);
+      o.yell = 1.6;
+    }
+  }
+
+  // ---------- surrendering slime / pet ----------
+  function surrenderSlime(e) {
+    e.dead = true;
+    G.enemies = G.enemies.filter((x) => x !== e);
+    G.room.objects.push({ kind: 'flagSlime', x: e.x, y: e.y, r: 15, name: pick(PET_NAMES), talkT: 0 });
+    sfx.sad();
+    floatText(e.x, e.y - 34, "Please don't hurt me!", '#ffffff', 2.4);
+  }
+  function flagSlimeHit(o) {
+    const e = { x: o.x, y: o.y, r: o.r };
+    moveEnt(e, rand(-30, 30), rand(-30, 30), 'walk');
+    o.x = clamp(e.x, T + o.r, RW - T - o.r); o.y = clamp(e.y, T + o.r, RH - T - o.r);
+    puff(o.x, o.y, '#62d462');
+    if (o.talkT <= 0) {
+      sfx.squeak();
+      floatText(o.x, o.y - 34, pick(['Hey! I surrendered!', 'Rude!', 'WHITE FLAG! WHITE FLAG!', 'I have a family!', 'Ow! Is this a ratio of 1:0?']), '#ffffff', 1.6);
+      o.talkT = 1.2;
+    }
+  }
+  function updatePet(dt) {
+    const p = G.run.player, pet = p.pet;
+    if (!pet) return;
+    pet.t += dt;
+    if (pet.hop > 0) pet.hop -= dt;
+    const tx = p.x - p.faceX * 40, ty = p.y - p.faceY * 40 + 6;
+    pet.x += (tx - pet.x) * Math.min(1, dt * 5);
+    pet.y += (ty - pet.y) * Math.min(1, dt * 5);
+    pet.cd -= dt;
+    if (pet.cd <= 0) {
+      let best = null, bd = 380;
+      for (const e of G.enemies) { if (e.dead || e.spawn > 0) continue; const d = dist(e, pet); if (d < bd) { bd = d; best = e; } }
+      if (best) {
+        const a = Math.atan2(best.y - pet.y, best.x - pet.x);
+        G.pbullets.push({ x: pet.x, y: pet.y, vx: Math.cos(a) * 380, vy: Math.sin(a) * 380, r: 5, dmg: 0.6 + p.damage * 0.3, life: 1.1, pierce: false, bounces: 0, hit: new Set(), color: '#8dff8d', pet: true });
+        pet.cd = 1.2; pet.hop = 0.25;
+      } else pet.cd = 0.3;
+    }
+  }
+
+  // ---------- The Substitute's pop quiz ----------
+  function popQuiz(b) {
+    b.stun = 0.6;
+    G.ebullets = [];
+    sfx.shield();
+    openProblem({ kind: 'quiz' }, BOSS, {
+      icon: '📝', title: 'POP QUIZ!',
+      reward: '"Pencils out, everyone!" Correct: the Substitute takes <b>big damage</b> and gets stunned. Wrong or walk away: no penalty. It\'s just a quiz!',
+      onSolve: (perfect) => {
+        b.hp -= b.maxHp * (perfect ? 0.15 : 0.1);
+        b.stun = perfect ? 3.5 : 2.5;
+        b.flash = 0.3;
+        G.shake = 10;
+        sfx.boom();
+        burst(b.x, b.y, '#ffffff', 40, 280);
+        floatText(b.x, b.y - b.r - 24, perfect ? 'A+! The Substitute is speechless!' : 'Correct! The Substitute is impressed!', '#ffe27a', 2.2);
+        if (b.hp <= 0) killEnemy(b);
+      },
+    });
   }
 
   function updateParticles(dt) {
@@ -1363,6 +1648,30 @@
         g.fillStyle = '#5e3c20'; g.fillRect(x, y + 6, T, 3); g.fillRect(x, y + T - 9, T, 3);
       }
     }
+    // a cracked wall hides the secret passage
+    if (room.secretDir && !room.secretOpen) {
+      g.strokeStyle = 'rgba(0,0,0,0.75)'; g.lineWidth = 2.5;
+      gapTiles(room.secretDir).forEach(([c, r], i) => {
+        const x = c * T, y = r * T;
+        g.beginPath();
+        g.moveTo(x + 10 + i * 4, y + 6); g.lineTo(x + 22, y + 18); g.lineTo(x + 16, y + 26); g.lineTo(x + 30, y + 38);
+        g.moveTo(x + 22, y + 18); g.lineTo(x + 36, y + 14);
+        g.stroke();
+      });
+    }
+    if (room.type === 'lounge') {
+      g.fillStyle = '#4a3f5e';
+      rr(g, 3 * T, 2 * T, RW - 6 * T, RH - 4 * T, 20); g.fill();
+      g.strokeStyle = '#ffe27a'; g.lineWidth = 3; g.stroke();
+      // couch
+      g.fillStyle = '#8a3b3b'; rr(g, RW / 2 - 110, RH - 3.4 * T, 220, 56, 12); g.fill();
+      g.fillStyle = '#a84a4a'; rr(g, RW / 2 - 96, RH - 3.4 * T + 14, 92, 34, 8); g.fill(); rr(g, RW / 2 + 4, RH - 3.4 * T + 14, 92, 34, 8); g.fill();
+      g.textAlign = 'center';
+      g.fillStyle = '#ffe27a'; g.font = 'bold 30px system-ui, sans-serif';
+      g.fillText("TEACHERS' LOUNGE", RW / 2, RH / 2 + 10);
+      g.fillStyle = '#ff6b6b'; g.font = 'bold 18px system-ui, sans-serif';
+      g.fillText('STUDENTS NOT ALLOWED', RW / 2, RH / 2 + 38);
+    }
     // inner shadow along walls
     g.fillStyle = 'rgba(0,0,0,0.25)';
     g.fillRect(T, T, RW - 2 * T, 10);
@@ -1382,6 +1691,7 @@
   function drawDoors() {
     const room = G.room, th = G.run.theme;
     for (const d of Object.keys(room.doors)) {
+      if (isSecretShut(room, d)) continue;
       const neighbor = room.doors[d];
       let x, y, w, h;
       if (d === 'n') { x = DC[0] * T; y = 0; w = 3 * T; h = T; }
@@ -1401,6 +1711,50 @@
         else for (let i = 0; i < 7; i++) ctx.fillRect(x + 4, y + 8 + i * 20, w - 8, 8);
       }
     }
+  }
+
+  // draws a hat with its bottom-center at (x, y)
+  function drawHat(v, x, y) {
+    if (v === 0) {
+      ctx.fillStyle = '#ffd23f';
+      ctx.beginPath(); ctx.moveTo(x - 11, y); ctx.lineTo(x - 11, y - 9); ctx.lineTo(x - 5, y - 4); ctx.lineTo(x, y - 12); ctx.lineTo(x + 5, y - 4); ctx.lineTo(x + 11, y - 9); ctx.lineTo(x + 11, y); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#e03a3a'; ctx.beginPath(); ctx.arc(x, y - 3, 2.2, 0, TAU); ctx.fill();
+    } else if (v === 1) {
+      ctx.fillStyle = '#ece5d0'; ctx.beginPath(); ctx.arc(x, y, 11, Math.PI, 0); ctx.fill();
+      ctx.fillStyle = '#8a7f66'; ctx.fillRect(x - 11, y - 2, 22, 2);
+      ctx.fillStyle = '#5b3f86'; ctx.fillRect(x - 1.5, y - 11, 3, 9);
+    } else if (v === 2) {
+      ctx.fillStyle = '#ffcc00'; ctx.beginPath(); ctx.arc(x, y - 1, 10, Math.PI, 0); ctx.fill();
+      ctx.fillRect(x - 14, y - 2, 28, 3);
+      ctx.fillStyle = '#e0a800'; ctx.fillRect(x - 1.5, y - 11, 3, 9);
+    } else {
+      ctx.fillStyle = '#222'; ctx.fillRect(x - 7, y - 6, 14, 6);
+      ctx.fillStyle = '#111';
+      ctx.beginPath(); ctx.moveTo(x - 15, y - 7); ctx.lineTo(x, y - 12); ctx.lineTo(x + 15, y - 7); ctx.lineTo(x, y - 2); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x, y - 7); ctx.lineTo(x + 11, y - 5); ctx.lineTo(x + 11, y + 3); ctx.stroke();
+    }
+  }
+
+  function drawPet(pet) {
+    const hop = pet.hop > 0 ? Math.sin((pet.hop / 0.25) * Math.PI) * 6 : 0;
+    const sq = 1 + Math.sin(pet.t * 6) * 0.06;
+    const x = pet.x, y = pet.y - hop;
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath(); ctx.ellipse(pet.x, pet.y + 9, 10, 3.5, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#62d462';
+    ctx.beginPath(); ctx.ellipse(x, y, 11 * sq, 9 / sq, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath(); ctx.ellipse(x - 4, y - 4, 3, 2, -0.5, 0, TAU); ctx.fill();
+    drawEyes(x, y - 1, 2.6, 4, G.run.player.faceX, G.run.player.faceY);
+    // a little pink bow so everyone knows it's a good slime now
+    ctx.fillStyle = '#ff7eb6';
+    ctx.beginPath(); ctx.moveTo(x + 5, y - 8); ctx.lineTo(x + 1, y - 12); ctx.lineTo(x + 1, y - 5); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x + 5, y - 8); ctx.lineTo(x + 9, y - 12); ctx.lineTo(x + 9, y - 5); ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = '#d9ffd9'; ctx.font = 'bold 11px system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(pet.name, x, y - 16);
+    ctx.globalAlpha = 1;
   }
 
   function drawPlayer(p) {
@@ -1426,6 +1780,12 @@
     // hood tip
     ctx.fillStyle = '#2bb5a0';
     ctx.beginPath(); ctx.moveTo(-8, -p.r + 3); ctx.lineTo(0, -p.r - 8); ctx.lineTo(8, -p.r + 3); ctx.fill();
+    // boss hats stack up (and wobble more the taller the tower gets)
+    let hy = -p.r - 3;
+    G.run.hats.forEach((v, i) => {
+      drawHat(v, Math.sin(G.t * 3 + i * 0.8) * i * 1.4, hy);
+      hy -= HATS[v].h;
+    });
     ctx.restore();
     if (p.bubble && p.bubbleReady) {
       ctx.strokeStyle = 'rgba(154,216,255,0.6)';
@@ -1560,6 +1920,21 @@
       ctx.beginPath(); ctx.arc(b.x - 11 + lx * 2, b.y + 2 + ly * 2, 3, 0, TAU); ctx.arc(b.x + 11 + lx * 2, b.y + 2 + ly * 2, 3, 0, TAU); ctx.fill();
       ctx.fillStyle = '#1a1020';
       for (let i = -2; i <= 2; i++) ctx.fillRect(b.x + i * 6 - 2, b.y + 16, 4, 7);
+    } else if (b.variant === 3) {
+      // The Substitute: sweater, glasses, clipboard
+      ctx.fillStyle = col;
+      rr(ctx, b.x - 24, b.y - 4, 48, 34, 10); ctx.fill();
+      ctx.fillStyle = '#f1c9a5';
+      ctx.beginPath(); ctx.arc(b.x, b.y - 16, 17, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#9a9a9a';
+      ctx.beginPath(); ctx.arc(b.x, b.y - 24, 15, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+      ctx.strokeStyle = '#222'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(b.x - 7, b.y - 15, 5, 0, TAU); ctx.moveTo(b.x + 12, b.y - 15); ctx.arc(b.x + 7, b.y - 15, 5, 0, TAU); ctx.moveTo(b.x - 2, b.y - 15); ctx.lineTo(b.x + 2, b.y - 15); ctx.stroke();
+      ctx.fillStyle = '#111';
+      ctx.beginPath(); ctx.arc(b.x - 7 + lx * 2, b.y - 15 + ly * 2, 1.8, 0, TAU); ctx.arc(b.x + 7 + lx * 2, b.y - 15 + ly * 2, 1.8, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#8a5a32'; ctx.fillRect(b.x + 10, b.y + 2, 18, 24);
+      ctx.fillStyle = '#fff'; ctx.fillRect(b.x + 12, b.y + 6, 14, 18);
+      ctx.fillStyle = '#d33'; ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'center'; ctx.fillText('QUIZ', b.x + 19, b.y + 17);
     } else {
       ctx.fillStyle = b.state === 'wind' ? '#ff7a3a' : col;
       rr(ctx, b.x - b.r, b.y - b.r, b.r * 2, b.r * 2, 10); ctx.fill();
@@ -1599,8 +1974,31 @@
     switch (o.kind) {
       case 'chest': {
         const gold = o.golden;
+        const awake = o.mimic && (o.fleeing || o.caught);
+        if (awake) {
+          // little legs scurrying
+          ctx.strokeStyle = '#5e3c20'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+          [-15, -6, 6, 15].forEach((lx, i) => {
+            const k = o.fleeing ? Math.sin(G.t * 24 + i * 1.7) * 5 : 0;
+            ctx.beginPath(); ctx.moveTo(lx, 12); ctx.lineTo(lx + k, 24); ctx.stroke();
+          });
+          ctx.lineCap = 'butt';
+        }
         ctx.fillStyle = gold ? '#c9932b' : '#8a5a32';
         rr(ctx, -22, -14, 44, 30, 5); ctx.fill();
+        if (awake) {
+          // gaping mouth with teeth, tongue, and eyes on the lid
+          ctx.fillStyle = '#2a0a0a'; ctx.fillRect(-19, -16, 38, 10);
+          ctx.fillStyle = '#ffffff';
+          for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.moveTo(-18 + i * 6.4, -16); ctx.lineTo(-15 + i * 6.4, -10); ctx.lineTo(-12 + i * 6.4, -16); ctx.fill(); }
+          ctx.fillStyle = '#ff6b8a';
+          ctx.beginPath(); ctx.ellipse(4, -8 + Math.sin(G.t * 10) * 2, 6, 4, 0, 0, TAU); ctx.fill();
+          ctx.fillStyle = gold ? '#e8b84a' : '#a8703f';
+          rr(ctx, -22, -32, 44, 14, 5); ctx.fill();
+          drawEyes(0, -25, 4.5, 9, 0, 0.4);
+          if (o.used) { ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center'; ctx.fillText('z z z', 20, -38); }
+          break;
+        }
         ctx.fillStyle = gold ? '#e8b84a' : '#a8703f';
         if (o.open || o.used) { rr(ctx, -22, -26, 44, 12, 4); ctx.fill(); ctx.fillStyle = '#1a1208'; ctx.fillRect(-18, -14, 36, 6); }
         else { rr(ctx, -22, -18, 44, 14, 5); ctx.fill(); }
@@ -1679,6 +2077,56 @@
         for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(-12, -10 + i * 10); ctx.lineTo(12, -10 + i * 10); ctx.stroke(); }
         ctx.fillStyle = th.accent; ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center';
         ctx.fillText('DOWN', 0, -30);
+        break;
+      }
+      case 'flagSlime': {
+        const bob = Math.sin(G.t * 4) * 1.5;
+        ctx.fillStyle = '#62d462';
+        ctx.beginPath(); ctx.ellipse(0, bob, 15, 12, 0, 0, TAU); ctx.fill();
+        drawEyes(0, bob - 2, 3.3, 5, 0, 0.5);
+        ctx.strokeStyle = '#2a7a2a'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, bob + 7, 3, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke(); // worried mouth
+        // white flag
+        ctx.strokeStyle = '#6b4526'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(14, bob + 4); ctx.lineTo(14, bob - 26); ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        const wave = Math.sin(G.t * 8) * 3;
+        ctx.beginPath(); ctx.moveTo(14, bob - 26); ctx.quadraticCurveTo(22, bob - 28 + wave, 30, bob - 24); ctx.lineTo(30, bob - 14); ctx.quadraticCurveTo(22, bob - 18 + wave, 14, bob - 16); ctx.closePath(); ctx.fill();
+        break;
+      }
+      case 'hat': {
+        ctx.save(); ctx.scale(1.8, 1.8);
+        drawHat(o.hat, 0, 4 + Math.sin(G.t * 3) * 2);
+        ctx.restore();
+        break;
+      }
+      case 'statue': {
+        ctx.fillStyle = '#5f6372'; rr(ctx, -24, 4, 48, 20, 3); ctx.fill();
+        ctx.fillStyle = '#c9a54a'; ctx.fillRect(-14, 10, 28, 8);
+        ctx.fillStyle = '#a7abb8';
+        rr(ctx, -12, -26, 24, 30, 6); ctx.fill();
+        ctx.beginPath(); ctx.arc(0, -34, 10, 0, TAU); ctx.fill();
+        ctx.font = `16px ${EMOJI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('🍎', 16, -2);
+        ctx.textBaseline = 'alphabetic';
+        break;
+      }
+      case 'coffee': {
+        ctx.fillStyle = '#2c2f38'; rr(ctx, -18, -30, 36, 46, 5); ctx.fill();
+        ctx.fillStyle = '#111'; ctx.fillRect(-10, -8, 20, 16);
+        ctx.fillStyle = o.used ? '#555' : '#ff4040'; ctx.beginPath(); ctx.arc(10, -22, 3, 0, TAU); ctx.fill();
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(-5, -2, 10, 9);
+        if (!o.used) {
+          ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(-2, -4); ctx.quadraticCurveTo(-6 + Math.sin(G.t * 3) * 3, -10, -1, -16); ctx.stroke();
+        }
+        ctx.fillStyle = '#ffe27a'; ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'center'; ctx.fillText('COFFEE', 0, -14);
+        break;
+      }
+      case 'papers': {
+        for (let i = 0; i < 5; i++) { ctx.fillStyle = i % 2 ? '#f4f4f4' : '#e6e6e6'; ctx.fillRect(-14 + (i % 3) - 1, 8 - i * 4, 28, 6); }
+        ctx.fillStyle = '#fff'; ctx.fillRect(-14, -14, 28, 10);
+        ctx.fillStyle = '#d33'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center'; ctx.fillText('QUIZ', 0, -6);
         break;
       }
       case 'rune': {
@@ -1788,7 +2236,7 @@
       const x = ox + gap + (r.gx - minX) * (cw + gap), y = oy + gap + (r.gy - minY) * (ch + gap);
       ctx.fillStyle = r === run.cur ? '#ffffff' : r.visited ? '#7d8aa6' : '#3b4252';
       ctx.fillRect(x, y, cw, ch);
-      const icon = { boss: ['#ff4d4d', '☠'], treasure: ['#ffd23f', '■'], shop: ['#6be38a', '$'], shrine: ['#c9a7ff', '△'], bridge: ['#c58f55', '≈'], goblin: ['#6fbf4a', '?'] }[r.type];
+      const icon = { boss: ['#ff4d4d', '☠'], treasure: ['#ffd23f', '■'], shop: ['#6be38a', '$'], shrine: ['#c9a7ff', '△'], bridge: ['#c58f55', '≈'], goblin: ['#6fbf4a', '?'], lounge: ['#ffe27a', '★'] }[r.type];
       if (icon && (r.visited || r.type === 'boss' || r.seen)) {
         ctx.fillStyle = r === run.cur ? '#000' : icon[0];
         ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center';
@@ -1820,7 +2268,7 @@
     ctx.globalAlpha = 1;
     const ents = [...G.enemies].sort((a, b) => a.y - b.y);
     for (const e of ents) drawEnemy(e);
-    if (G.deathT <= 0 && p.hp > 0) drawPlayer(p);
+    if (G.deathT <= 0 && p.hp > 0) { if (p.pet) drawPet(p.pet); drawPlayer(p); }
     for (const b of G.pbullets) {
       ctx.fillStyle = b.color;
       ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
@@ -1829,7 +2277,13 @@
     }
     for (const b of G.ebullets) {
       ctx.fillStyle = b.color;
-      if (b.arrow) {
+      if (b.paper) {
+        const a = Math.atan2(b.vy, b.vx);
+        ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(a);
+        ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-8, -7); ctx.lineTo(-4, 0); ctx.lineTo(-8, 7); ctx.closePath();
+        ctx.fill(); ctx.strokeStyle = '#8a8a8a'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.restore();
+      } else if (b.arrow) {
         const a = Math.atan2(b.vy, b.vx);
         ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(a);
         ctx.fillRect(-10, -1.5, 16, 3);
@@ -1922,7 +2376,10 @@
     G.mode = won ? 'won' : 'dead';
     clearInput();
     $('end-title').textContent = won ? '🏆 You escaped the dungeon!' : '💀 You were defeated…';
-    $('end-sub').textContent = won ? 'All three bosses defeated. Legendary!' : `You made it to Floor ${run.floor}. Every run makes you stronger at math. Try again!`;
+    $('end-sub').textContent = won ? 'All three bosses defeated. Legendary!' : `${defeatLine()} (You made it to Floor ${run.floor}. Try again!)`;
+    const extras = [];
+    if (run.hats.length) extras.push(`Hats: ${run.hats.map((h) => HATS[h].emoji).join(' ')}`);
+    if (run.player.pet) extras.push(`Pet slime: ${escapeHTML(run.player.pet.name)} 🟢`);
     const mins = Math.max(1, Math.round((Date.now() - run.start) / 60000));
     const rows = Object.entries(s.byType).map(([k, v]) => `<tr><td>${P.TYPES[k].name}</td><td>${v.solved} / ${v.attempted}</td></tr>`).join('');
     $('end-stats').innerHTML = `
@@ -1934,9 +2391,19 @@
         <div><b>${run.kills}</b><span>monsters defeated</span></div>
       </div>
       ${rows ? `<table class="end-table"><tr><th>Problem type</th><th>Solved</th></tr>${rows}</table>` : '<p>No math problems attempted this run. Open chests to get loot!</p>'}
+      ${extras.length ? `<div class="end-extras">${extras.join(' &nbsp;·&nbsp; ')}</div>` : ''}
       <div class="end-code">Report code: <b>${reportCode(run, run.floor)}</b> · ${mins} min</div>`;
     $('end-continue').classList.toggle('hidden', !won);
     showScreen('end');
+  }
+  function defeatLine() {
+    const src = (G.lastHit || '').split(':')[1] || '';
+    const n = G.enemies.filter((e) => !e.dead).length;
+    const boss = G.enemies.find((e) => e.kind === 'boss');
+    let pool = DEFEAT_LINES.generic.filter((l) => !l.includes('{n}') || n >= 2);
+    if (src === 'boss' && boss) pool = DEFEAT_LINES.boss;
+    else if (DEFEAT_LINES[src] && Math.random() < 0.7) pool = DEFEAT_LINES[src];
+    return pick(pool).replace('{n}', n).replace('{boss}', boss ? boss.name : 'The boss');
   }
   function escapeHTML(s) { return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
@@ -1954,11 +2421,15 @@
     $('set-freq').checked = settings.freq === 'high';
     $('set-sound').checked = settings.sound;
     $('set-locked').classList.toggle('hidden', !lockedByLink);
+    $('set-teacher').value = settings.teacherName || '';
     updateLink();
   }
+  $('set-teacher').oninput = (e) => { settings.teacherName = e.target.value.slice(0, 40); saveSettings(); updateLink(); };
   function updateLink() {
     const on = Object.keys(settings.types).filter((k) => settings.types[k] !== false);
-    const url = location.origin + location.pathname + `?types=${on.join(',')}` + (settings.freq === 'high' ? '&freq=high' : '');
+    const tn = (settings.teacherName || '').trim();
+    const url = location.origin + location.pathname + `?types=${on.join(',')}` + (settings.freq === 'high' ? '&freq=high' : '') +
+      (tn ? `&teacher=${encodeURIComponent(tn)}` : '');
     $('set-link').value = url;
   }
   $('set-freq').onchange = (e) => { settings.freq = e.target.checked ? 'high' : 'normal'; saveSettings(); updateLink(); };
