@@ -343,14 +343,17 @@
     if (p.bubble) p.bubbleReady = true;
     if (!room.cleared && room.type === 'combat') {
       const f = run.floor;
-      const n = Math.min(10, 3 + f + irand(0, 2));
+      const n = Math.min(8, 4 + Math.floor((f - 1) * 0.5) + irand(0, 1));
       const kinds = f === 1 ? ['slime', 'slime', 'bat', 'bat', 'archer', 'charger', 'eye']
-        : f === 2 ? ['slime', 'bigslime', 'bat', 'archer', 'archer', 'charger', 'eye', 'ghost']
-          : ['bigslime', 'bat', 'archer', 'archer', 'charger', 'charger', 'eye', 'ghost', 'ghost'];
+        : f === 2 ? ['slime', 'slime', 'bigslime', 'bat', 'bat', 'archer', 'charger', 'eye', 'ghost']
+          : ['slime', 'bigslime', 'bat', 'bat', 'archer', 'archer', 'charger', 'eye', 'ghost'];
       const spots = spawnSpots(room, p);
       for (let i = 0; i < n && spots.length; i++) {
         const s = spots.splice(irand(0, spots.length - 1), 1)[0];
-        G.enemies.push(makeEnemy(pick(kinds), s.x, s.y));
+        let kind = pick(kinds);
+        // at most 2 archers per room: their arrows are the hardest thing to dodge
+        if (kind === 'archer' && G.enemies.filter((e) => e.kind === 'archer').length >= 2) kind = pick(['slime', 'bat']);
+        G.enemies.push(makeEnemy(kind, s.x, s.y));
       }
       G.locked = G.enemies.length > 0;
       if (G.locked) sfx.door();
@@ -435,7 +438,7 @@
 
   // ================= enemies =================
   function makeEnemy(kind, x, y) {
-    const f = G.run.floor, hm = 1 + 0.45 * (f - 1), sm = 1 + 0.06 * (f - 1);
+    const f = G.run.floor, hm = 1 + 0.3 * (f - 1), sm = 1 + 0.04 * (f - 1);
     const base = { kind, x, y, t: Math.random() * 3, flash: 0, slow: 0, spawn: 0.7, kx: 0, ky: 0 };
     const defs = {
       slime: { r: 15, hp: 3, speed: 75, color: '#62d462' },
@@ -444,7 +447,7 @@
       archer: { r: 14, hp: 4, speed: 85, color: '#ece5d0', cd: rand(1.4, 2.6) },
       charger: { r: 17, hp: 6, speed: 60, color: '#b8834f', state: 'walk', st: rand(1, 2.5) },
       eye: { r: 16, hp: 7, speed: 0, color: '#e05a5a', cd: rand(1.5, 2.8), rot: rand(0, TAU) },
-      ghost: { r: 14, hp: 4, speed: 70, color: '#d6ebff', alpha: 1 },
+      ghost: { r: 14, hp: 3, speed: 62, color: '#d6ebff', alpha: 1 },
     };
     const d = defs[kind];
     const e = Object.assign(base, d);
@@ -471,8 +474,8 @@
   }
 
   function fireEnemy(x, y, ux, uy, speed, opts) {
-    const sm = 1 + 0.07 * (G.run.floor - 1);
-    G.ebullets.push(Object.assign({ x, y, vx: ux * speed * sm, vy: uy * speed * sm, r: 6, life: 6, color: '#ff6b6b' }, opts || {}));
+    const sm = 1 + 0.04 * (G.run.floor - 1);
+    G.ebullets.push(Object.assign({ x, y, vx: ux * speed * sm, vy: uy * speed * sm, r: 6, life: 6, color: '#ff6b6b', src: fireEnemy.src }, opts || {}));
   }
   function ring(x, y, n, speed, offset, opts) {
     for (let i = 0; i < n; i++) {
@@ -483,6 +486,7 @@
 
   function updateEnemy(e, dt) {
     const p = G.run.player;
+    fireEnemy.src = e.kind;
     if (e.spawn > 0) { e.spawn -= dt; return; }
     e.t += dt;
     if (e.flash > 0) e.flash -= dt;
@@ -519,15 +523,15 @@
         const s = Math.sin(e.t * 0.9) * 0.6;
         moveEnt(e, (ux * m - uy * s) * sp * dt, (uy * m + ux * s) * sp * dt, 'walk');
         e.cd -= dt;
-        e.aim = e.cd < 0.45;
+        e.aim = e.cd < 0.6; // red bow = about to shoot
         if (e.cd <= 0) {
-          fireEnemy(e.x, e.y, ux, uy, 260, { color: '#fff1b8', arrow: true });
-          if (f >= 3) {
+          fireEnemy(e.x, e.y, ux, uy, 225, { color: '#fff1b8', arrow: true });
+          if (f >= 4) {
             const a = Math.atan2(uy, ux);
             fireEnemy(e.x, e.y, Math.cos(a + 0.25), Math.sin(a + 0.25), 240, { color: '#fff1b8', arrow: true });
             fireEnemy(e.x, e.y, Math.cos(a - 0.25), Math.sin(a - 0.25), 240, { color: '#fff1b8', arrow: true });
           }
-          e.cd = rand(1.8, 2.6) - 0.15 * Math.min(f, 4);
+          e.cd = rand(2.0, 2.8) - 0.1 * Math.min(f, 4);
         }
         break;
       }
@@ -556,8 +560,8 @@
         e.cd -= dt;
         e.rot += dt * 0.7;
         if (e.cd <= 0) {
-          ring(e.x, e.y, f >= 2 ? 8 : 4, 170, e.rot, { color: '#ff8a5c' });
-          e.cd = 2.6 - 0.15 * Math.min(f, 4);
+          ring(e.x, e.y, f >= 3 ? 6 : 4, 160, e.rot, { color: '#ff8a5c' });
+          e.cd = 2.8 - 0.1 * Math.min(f, 4);
         }
         break;
       }
@@ -718,9 +722,11 @@
   }
 
   // ================= player =================
-  function hurtPlayer() {
+  function hurtPlayer(src) {
     const p = G.run.player;
     if (p.inv > 0 || p.dashT > 0 || G.mode !== 'play') return;
+    G.dmgLog = G.dmgLog || {};
+    G.dmgLog[src || '?'] = (G.dmgLog[src || '?'] || 0) + 1;
     if (p.bubble && p.bubbleReady) {
       p.bubbleReady = false;
       p.inv = 0.8;
@@ -1193,7 +1199,15 @@
     for (const e of G.enemies) {
       if (e.spawn > 0 || e.dead) continue;
       if (e.kind === 'ghost' && e.alpha < 0.45) continue;
-      if (dist(e, p) < e.r + p.r * 0.7) hurtPlayer();
+      if (dist(e, p) < e.r + p.r * 0.7) {
+        hurtPlayer('touch:' + e.kind);
+        // bounce the attacker away so enemies can't pin you in a corner
+        if (e.kind !== 'boss' && e.kind !== 'eye') {
+          const d = dist(e, p) || 1;
+          e.kx = ((e.x - p.x) / d) * 420; e.ky = ((e.y - p.y) / d) * 420;
+          if (e.state === 'charge') { e.state = 'stun'; e.st = 0.8; }
+        }
+      }
     }
 
     // player bullets
@@ -1224,7 +1238,6 @@
       if (b.life <= 0) { b.dead = true; continue; }
       for (const e of G.enemies) {
         if (e.dead || e.spawn > 0 || b.hit.has(e)) continue;
-        if (e.kind === 'ghost' && e.alpha < 0.45) continue;
         if (Math.hypot(e.x - b.x, e.y - b.y) < e.r + b.r) {
           const sp = Math.hypot(b.vx, b.vy) || 1;
           damageEnemy(e, b.dmg, b.vx / sp, b.vy / sp);
@@ -1253,7 +1266,7 @@
     for (const b of G.ebullets) {
       b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
       if (b.life <= 0 || pointSolid(b.x, b.y, 'shot')) { b.dead = true; continue; }
-      if (Math.hypot(b.x - p.x, b.y - p.y) < b.r + p.r * 0.6) { b.dead = true; hurtPlayer(); }
+      if (Math.hypot(b.x - p.x, b.y - p.y) < b.r + p.r * 0.6) { b.dead = true; hurtPlayer('shot:' + (b.src || '?')); }
     }
     G.pbullets = G.pbullets.filter((b) => !b.dead);
     G.ebullets = G.ebullets.filter((b) => !b.dead);
