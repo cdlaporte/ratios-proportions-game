@@ -39,6 +39,9 @@
   .set-link { display: flex; gap: 8px; margin-top: 6px; }
   .set-link input { flex: 1; font-size: 13px; }
   .note { color: var(--muted); font-size: 14px; }
+  .pin-input { font: inherit; font-size: 34px; letter-spacing: 14px; text-align: center; width: 200px; padding: 10px; border-radius: 10px; border: 3px solid var(--line); background: #0e111a; color: var(--text); margin-top: 6px; }
+  .pin-input:focus { border-color: var(--teal); outline: none; }
+  .pin-msg { min-height: 24px; color: var(--red); font-weight: 700; margin-top: 8px; }
 
   /* problem modal */
   #modal-panel { width: min(820px, 100%); }
@@ -149,6 +152,20 @@
       <li>Keep scratch paper handy. Every answer is a whole number.</li>
     </ul>
     <div class="row"><button class="btn" data-back>Back</button></div>
+  </div>
+</div>
+
+<!-- Teacher PIN -->
+<div id="pin" class="overlay screen hidden">
+  <div class="panel" id="pin-panel" style="width:min(400px,100%);text-align:center">
+    <h2>🔐 Teacher Settings</h2>
+    <p class="note">Enter the 4-digit teacher PIN.</p>
+    <input id="pin-input" class="pin-input" type="password" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="Teacher PIN">
+    <div id="pin-msg" class="pin-msg"></div>
+    <div class="row">
+      <button class="btn primary" id="pin-ok">Unlock</button>
+      <button class="btn" data-back>Back</button>
+    </div>
   </div>
 </div>
 

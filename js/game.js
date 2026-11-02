@@ -1894,7 +1894,7 @@
 
   // ================= screens =================
   function showScreen(id) {
-    ['title', 'howto', 'settings', 'pause', 'end'].forEach((s) => $(s).classList.toggle('hidden', s !== id));
+    ['title', 'howto', 'pin', 'settings', 'pause', 'end'].forEach((s) => $(s).classList.toggle('hidden', s !== id));
     if (!id) blurUI();
   }
   function pauseGame() {
@@ -1976,7 +1976,44 @@
   $('name').oninput = (e) => { settings.name = e.target.value.slice(0, 40); saveSettings(); };
   $('btn-play').onclick = () => { tone(1, 0.01, 'sine', 0.0001); startRun(); };
   $('btn-howto').onclick = () => showScreen('howto');
-  $('btn-settings').onclick = () => { renderSettings(); showScreen('settings'); };
+  // Teacher settings are behind a 4-digit PIN. Only a hash of the PIN is stored here, so
+  // the digits don't appear in the source. To change the PIN, run
+  // RatioRogue.pinHash('1234') in the browser console and paste the result into PIN_HASH.
+  const PIN_HASH = 'f1a88529';
+  const pinHash = (pin) => {
+    let h = 0x811c9dc5;
+    for (const ch of 'ratio-rogue-pin:' + pin) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+    return h.toString(16);
+  };
+  let teacherUnlocked = false; // stays unlocked until the page is reloaded
+  const openSettings = () => { renderSettings(); showScreen('settings'); };
+  $('btn-settings').onclick = () => {
+    if (teacherUnlocked) return openSettings();
+    $('pin-input').value = '';
+    $('pin-msg').textContent = '';
+    showScreen('pin');
+    $('pin-input').focus();
+  };
+  function checkPin() {
+    const inp = $('pin-input');
+    if (pinHash(inp.value.trim()) === PIN_HASH) {
+      teacherUnlocked = true;
+      openSettings();
+      return;
+    }
+    sfx.wrong();
+    inp.value = '';
+    $('pin-msg').textContent = 'Incorrect PIN.';
+    const panel = $('pin-panel');
+    panel.classList.remove('shake'); void panel.offsetWidth; panel.classList.add('shake');
+    inp.focus();
+  }
+  $('pin-ok').onclick = checkPin;
+  $('pin-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); checkPin(); }
+    if (e.key === 'Escape') { e.preventDefault(); showScreen('title'); }
+  });
+  $('pin-input').addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4); });
   document.querySelectorAll('[data-back]').forEach((b) => (b.onclick = () => showScreen('title')));
   $('pause-resume').onclick = resumeGame;
   $('pause-sound').onclick = () => { settings.sound = !settings.sound; saveSettings(); $('pause-sound').textContent = `Sound: ${settings.sound ? 'ON' : 'OFF'}`; };
@@ -2002,5 +2039,5 @@
   requestAnimationFrame(frame);
 
   // expose for debugging/testing in the console
-  window.RatioRogue = { G, startRun, newFloor, giveItem, ITEMS, enterRoom, interact };
+  window.RatioRogue = { G, startRun, newFloor, giveItem, ITEMS, enterRoom, interact, pinHash };
 })();

@@ -49,7 +49,13 @@ power-ups. The math is the key to the good loot:
 
 ## Teacher settings
 
-On the title screen, click **Teacher Settings** to:
+On the title screen, click **Teacher Settings** and enter the 4-digit teacher PIN.
+It stays unlocked until the page is reloaded. Only a hash of the PIN is stored in the
+code. To change the PIN, open the browser console on the game page, run
+`RatioRogue.pinHash('1234')` with your new PIN, and paste the result into `PIN_HASH`
+in `js/game.js`.
+
+Once unlocked, you can:
 * turn individual problem types on or off,
 * turn on **Extra practice** (more math chests drop after fights),
 * copy a **class link** that has those settings built in. For example, this link gives
