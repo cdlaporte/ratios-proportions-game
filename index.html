@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ratio Rogue</title>
+<style>
+  :root {
+    --bg: #07080c; --panel: #171b27; --panel2: #1f2433; --line: #34405c; --text: #eef2ff; --muted: #a9b3c9;
+    --gold: #ffd23f; --teal: #2bb5a0; --red: #ff5f6d; --green: #5fd38a; --blue: #5ab0ff; --purple: #c9a7ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: system-ui, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+  #wrap { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; image-rendering: auto; outline: none; cursor: crosshair; }
+  .hidden { display: none !important; }
+
+  .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(4,5,9,0.72); z-index: 10; overflow-y: auto; }
+  .screen { background: radial-gradient(circle at 50% 0%, #1d2540 0%, #07080c 70%); }
+  .panel { background: var(--panel); border: 3px solid var(--line); border-radius: 16px; padding: 22px 26px; width: min(760px, 100%); box-shadow: 0 20px 60px rgba(0,0,0,0.6); max-height: calc(100vh - 32px); overflow-y: auto; }
+  h1.logo { font-size: clamp(44px, 8vw, 76px); margin: 0; letter-spacing: 3px; text-align: center; color: var(--gold); text-shadow: 0 4px 0 #8a5a00, 0 8px 24px rgba(255,210,63,0.35); font-weight: 900; }
+  .tag { text-align: center; color: var(--muted); margin: 6px 0 22px; font-size: 18px; }
+  h2 { margin: 0 0 12px; }
+  .btn { font: inherit; font-weight: 700; font-size: 18px; padding: 12px 20px; border-radius: 10px; border: 2px solid var(--line); background: var(--panel2); color: var(--text); cursor: pointer; }
+  .btn:hover:not(:disabled) { filter: brightness(1.2); }
+  .btn:disabled { opacity: 0.45; cursor: default; }
+  .btn.primary { background: var(--teal); border-color: #1f8a7a; color: #04130f; }
+  .btn.gold { background: var(--gold); border-color: #b8860b; color: #261a00; }
+  .btn.ghost { background: transparent; }
+  .stack { display: flex; flex-direction: column; gap: 10px; max-width: 360px; margin: 0 auto; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 16px; }
+  .namebox { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; color: var(--muted); font-size: 14px; }
+  .namebox input, .set-link input { font: inherit; font-size: 18px; padding: 10px 12px; border-radius: 8px; border: 2px solid var(--line); background: #0e111a; color: var(--text); }
+  .howto ul { line-height: 1.6; font-size: 17px; padding-left: 22px; }
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 17px; margin: 8px 0 14px; }
+  kbd { background: #2a3045; border: 1px solid #4a5677; border-bottom-width: 3px; border-radius: 5px; padding: 1px 7px; font-family: inherit; font-weight: 700; }
+  .chk { display: flex; gap: 10px; align-items: center; padding: 6px 0; font-size: 17px; cursor: pointer; }
+  .chk input { width: 20px; height: 20px; }
+  .set-link { display: flex; gap: 8px; margin-top: 6px; }
+  .set-link input { flex: 1; font-size: 13px; }
+  .note { color: var(--muted); font-size: 14px; }
+
+  /* problem modal */
+  #modal-panel { width: min(820px, 100%); }
+  .pm-head { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+  #pm-icon { font-size: 38px; }
+  #pm-title { font-size: 26px; font-weight: 800; }
+  #pm-type { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+  #pm-reward { background: #262014; border: 1px solid #5c4a1d; color: #ffe7a0; padding: 8px 12px; border-radius: 8px; font-size: 15px; margin: 8px 0 14px; }
+  #pm-prompt { font-size: 22px; line-height: 1.5; }
+  #pm-prompt p { margin: 6px 0; }
+  #pm-prompt .story { color: #dfe6ff; }
+  .ratio { color: var(--gold); font-size: 1.15em; letter-spacing: 1px; }
+  .big { font-size: 34px; text-align: center; margin: 12px 0; }
+  .prop { display: inline-flex; align-items: center; gap: 14px; }
+  .frac { display: inline-flex; flex-direction: column; align-items: center; vertical-align: middle; margin: 0 2px; line-height: 1.15; }
+  .frac .num { border-bottom: 3px solid currentColor; padding: 0 8px 2px; }
+  .frac .den { padding: 2px 8px 0; }
+  .hint .frac, .sol-step .frac { font-size: 1em; }
+  .diag-a { color: var(--red); font-weight: 800; }
+  .diag-b { color: var(--blue); font-weight: 800; }
+  .eq { font-weight: 700; }
+  .small { font-size: 14px; color: var(--muted); }
+  #pm-fields { display: flex; flex-wrap: wrap; gap: 12px 22px; margin: 16px 0 6px; align-items: center; }
+  .field { display: flex; align-items: center; gap: 8px; font-size: 21px; font-weight: 700; }
+  .field input { width: 110px; font: inherit; font-size: 24px; padding: 8px 10px; border-radius: 8px; border: 3px solid var(--line); background: #0e111a; color: var(--text); text-align: center; }
+  .field input:focus { border-color: var(--teal); outline: none; }
+  .field input.ok { border-color: var(--green); background: #10261b; }
+  .field input.bad { border-color: var(--red); background: #2a1216; }
+  .fu { color: var(--muted); font-weight: 400; font-size: 18px; }
+  .choice { font: inherit; font-size: 24px; font-weight: 800; padding: 12px 22px; border-radius: 10px; border: 3px solid var(--line); background: var(--panel2); color: var(--text); cursor: pointer; min-width: 120px; }
+  .choice .ck { font-size: 12px; color: var(--muted); vertical-align: middle; margin-right: 6px; }
+  .choice.ok { border-color: var(--green); background: #10261b; }
+  .choice.bad { border-color: var(--red); background: #2a1216; opacity: 0.6; }
+  #pm-hints .hint { background: #142033; border-left: 4px solid var(--blue); padding: 8px 12px; margin: 8px 0; border-radius: 6px; font-size: 18px; line-height: 1.5; }
+  #pm-hints .hint .big { font-size: 28px; margin: 6px 0; }
+  #pm-solution { background: #1b1530; border-left: 4px solid var(--purple); padding: 10px 14px; margin: 10px 0; border-radius: 6px; font-size: 18px; line-height: 1.6; }
+  .sol-title { font-weight: 800; color: var(--purple); margin-bottom: 4px; }
+  .sol-step { padding: 2px 0; }
+  #pm-feedback { min-height: 28px; font-size: 19px; font-weight: 700; margin-top: 6px; }
+  #pm-feedback.ok { color: var(--green); }
+  #pm-feedback.bad { color: var(--red); }
+  #pm-feedback.warn { color: var(--gold); }
+  .pm-buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+  .pm-buttons .spacer { flex: 1; }
+  .shake { animation: shake 0.35s; }
+  @keyframes shake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-10px); } 40% { transform: translateX(10px); } 60% { transform: translateX(-6px); } 80% { transform: translateX(6px); } }
+
+  /* item pick */
+  #pick-cards { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-top: 12px; }
+  .card { font: inherit; width: 200px; padding: 16px 12px; border-radius: 14px; border: 3px solid var(--line); background: var(--panel2); color: var(--text); cursor: pointer; transition: transform 0.1s; }
+  .card:hover { transform: translateY(-4px); border-color: var(--gold); }
+  .card .ci { font-size: 48px; }
+  .card .cn { font-weight: 800; font-size: 19px; margin: 6px 0 4px; color: var(--gold); }
+  .card .cd { color: var(--muted); font-size: 15px; min-height: 40px; }
+  .card .ck { font-size: 12px; color: #6f7a94; margin-top: 8px; }
+
+  /* end screen */
+  .end-name { text-align: center; font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+  .end-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0; }
+  .end-grid div { background: var(--panel2); border-radius: 10px; padding: 12px 6px; text-align: center; }
+  .end-grid b { display: block; font-size: 30px; color: var(--gold); }
+  .end-grid span { font-size: 13px; color: var(--muted); }
+  .end-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 16px; }
+  .end-table td, .end-table th { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; }
+  .end-table td:last-child, .end-table th:last-child { text-align: right; }
+  .end-code { text-align: center; margin-top: 12px; font-size: 16px; color: var(--muted); }
+  .end-code b { color: var(--text); letter-spacing: 1px; }
+  @media (max-width: 600px) { .end-grid { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game" tabindex="0" aria-label="Ratio Rogue game"></canvas></div>
+
+<!-- Title -->
+<div id="title" class="overlay screen">
+  <div class="panel" style="text-align:center">
+    <h1 class="logo">RATIO ROGUE</h1>
+    <div class="tag">Fight monsters. Grab loot. The locks only open with math.</div>
+    <div class="stack">
+      <label class="namebox">Your name (shows on your end-of-run report)
+        <input id="name" maxlength="40" autocomplete="off" placeholder="First and last name">
+      </label>
+      <button class="btn primary" id="btn-play">▶ Play</button>
+      <button class="btn" id="btn-howto">How to Play</button>
+      <button class="btn ghost" id="btn-settings">Teacher Settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- How to play -->
+<div id="howto" class="overlay screen hidden">
+  <div class="panel howto">
+    <h2>How to Play</h2>
+    <div class="keys">
+      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Move</span>
+      <span><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd> or click</span><span>Shoot (hold to keep firing)</span>
+      <span><kbd>Space</kbd></span><span>Dash (you can't be hurt while dashing)</span>
+      <span><kbd>E</kbd></span><span>Open chests, use shrines, buy things, go down hatches</span>
+      <span><kbd>P</kbd> / <kbd>Esc</kbd></span><span>Pause</span>
+    </div>
+    <ul>
+      <li>Clear rooms of monsters to open the doors. Find the <b style="color:#ff6b6b">boss</b> to reach the next floor. Beat 3 floors to win!</li>
+      <li><b>🔒 Bow-Tie Chests</b> are locked with <b>proportions</b>. Cross multiply to open them and choose a power-up.</li>
+      <li><b>📐 Angle Shrines</b> heal you if you solve an <b>angle ratio</b> problem.</li>
+      <li><b>🌉 Bridges</b> are built by solving <b>triangle side + perimeter</b> problems.</li>
+      <li><b>🔮 Boss shields</b> break when you solve the glowing rune.</li>
+      <li>⭐ <b>Perfect solve</b> = first try with no hints, for a bigger reward. Wrong answers never hurt you, so keep trying! After 2 misses you can see the full solution.</li>
+      <li>Keep scratch paper handy. Every answer is a whole number.</li>
+    </ul>
+    <div class="row"><button class="btn" data-back>Back</button></div>
+  </div>
+</div>
+
+<!-- Teacher settings -->
+<div id="settings" class="overlay screen hidden">
+  <div class="panel">
+    <h2>Teacher Settings</h2>
+    <p id="set-locked" class="note hidden">⚠ These settings were loaded from a class link.</p>
+    <p class="note">Choose which problem types appear. Harder proportion types unlock on later floors (x + 3 on Floor 2, x on both sides on Floor 3).</p>
+    <div id="set-types"></div>
+    <label class="chk"><input type="checkbox" id="set-freq"> Extra practice: more math chests drop after fights</label>
+    <label class="chk"><input type="checkbox" id="set-sound"> Sound effects</label>
+    <p class="note" style="margin-top:14px">Share this link with students so their games use these settings:</p>
+    <div class="set-link"><input id="set-link" readonly><button class="btn" id="set-copy">Copy link</button></div>
+    <div class="row"><button class="btn" data-back>Back</button></div>
+  </div>
+</div>
+
+<!-- Pause -->
+<div id="pause" class="overlay hidden">
+  <div class="panel" style="width:min(380px,100%);text-align:center">
+    <h2>Paused</h2>
+    <div class="stack">
+      <button class="btn primary" id="pause-resume">Resume</button>
+      <button class="btn" id="pause-sound">Sound: ON</button>
+      <button class="btn ghost" id="pause-quit">Quit to title</button>
+    </div>
+  </div>
+</div>
+
+<!-- End -->
+<div id="end" class="overlay hidden">
+  <div class="panel">
+    <h2 id="end-title" style="text-align:center;font-size:30px"></h2>
+    <p id="end-sub" style="text-align:center;color:var(--muted)"></p>
+    <div id="end-stats"></div>
+    <div class="row">
+      <button class="btn primary" id="end-again">Play again</button>
+      <button class="btn gold hidden" id="end-continue">Keep going (endless floors)</button>
+      <button class="btn ghost" id="end-title-btn">Title screen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Math problem -->
+<div id="modal" class="overlay hidden">
+  <div class="panel" id="modal-panel" role="dialog" aria-modal="true">
+    <div class="pm-head"><span id="pm-icon"></span><div><div id="pm-title"></div><div id="pm-type"></div></div></div>
+    <div id="pm-reward"></div>
+    <div id="pm-prompt"></div>
+    <div id="pm-fields"></div>
+    <div id="pm-feedback"></div>
+    <div id="pm-hints"></div>
+    <div id="pm-solution" class="hidden"></div>
+    <div class="pm-buttons">
+      <button class="btn primary" id="pm-submit">Check answer (Enter)</button>
+      <button class="btn gold hidden" id="pm-new">Try a new one (Enter)</button>
+      <button class="btn" id="pm-hint">Hint</button>
+      <button class="btn hidden" id="pm-reveal">Show me how</button>
+      <span class="spacer"></span>
+      <button class="btn ghost" id="pm-leave">Walk away (Esc)</button>
+    </div>
+  </div>
+</div>
+
+<!-- Item pick -->
+<div id="pick" class="overlay hidden">
+  <div class="panel" style="text-align:center">
+    <h2 id="pick-title">Choose one:</h2>
+    <div id="pick-cards"></div>
+  </div>
+</div>
+
+<script src="js/problems.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
